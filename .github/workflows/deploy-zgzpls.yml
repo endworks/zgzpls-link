@@ -1,0 +1,70 @@
+name: Deploy ZgzPls After Docker Build
+
+on:
+    workflow_run:
+        workflows: ["Build and Push Docker Image"]
+        types:
+            - completed
+
+jobs:
+    deploy:
+        if: ${{ github.event.workflow_run.conclusion == 'success' }}
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Set environment variables
+              id: set-env-vars
+              run: |
+                  OWNER=${{github.repository_owner}}
+                  REPO=${{github.repository}}
+
+                  CONTAINER_NAME="${REPO#$OWNER}"
+                  CONTAINER_NAME="${CONTAINER_NAME#/}"
+
+                  TAG=$(echo "${{github.sha}}" | cut -c1-7)
+                  TAG="sha-$TAG"
+                  VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+
+                  [ "$VERSION" != "main" ] && CONTAINER_NAME="${CONTAINER_NAME}-$VERSION"
+                  [ "$VERSION" == "main" ] && TAG=latest
+
+                  echo "CONTAINER_NAME=$CONTAINER_NAME" >> "$GITHUB_ENV"
+                  echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+            - name: Load secret
+              id: op-load-secret
+              uses: 1password/load-secrets-action@v2
+              with:
+                  export-env: true
+              env:
+                  OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+                  HOST: op://end.works/end.works/URL
+                  PORT: op://end.works/end.works/port
+                  USERNAME: op://end.works/end.works/username
+                  KEY: op://end.works/SSH Key/private key
+                  FINGERPRINT: op://end.works/SSH Key/fingerprint
+                  APP_STORE_APP_ID: op://end.works/ZgzPls/app id
+                  PLAY_STORE_PACKAGE_NAME: op://end.works/ZgzPls/package name
+                  CONTAINER_NAME: op://end.works/ZgzPls/container name
+
+            - name: Run container on host
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                  host: ${{ env.HOST }}
+                  port: ${{ env.PORT }}
+                  username: ${{ env.USERNAME }}
+                  key: ${{ env.KEY }}
+                  script: |
+                      docker pull ghcr.io/${{ github.repository }}:${{ env.TAG }}
+                      docker stop ${{ env.CONTAINER_NAME }}
+                      docker rm ${{ env.CONTAINER_NAME }}
+                      docker run -p 8087:3000/tcp -e APP_STORE_APP_ID='${{ env.APP_STORE_APP_ID }}' -e PLAY_STORE_PACKAGE_NAME='${{ env.PLAY_STORE_PACKAGE_NAME }}' -ti -d --restart unless-stopped --name ${{ env.CONTAINER_NAME }} ghcr.io/${{ github.repository }}:${{ env.TAG }}
+
+            - name: Generate summary
+              id: generate-summary
+              run: |
+                  echo "### Deployment done! :rocket:" > $GITHUB_STEP_SUMMARY
+                  echo "Started container ``${{ env.CONTAINER_NAME }}`` running ``${{ github.repository }}@${{ env.TAG }}``" >> $GITHUB_STEP_SUMMARY
