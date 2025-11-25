@@ -1,4 +1,4 @@
-FROM node:latest-alpine
+FROM node:current-alpine
 
 LABEL org.opencontainers.image.source="https://github.com/endworks/app-link"
 LABEL org.opencontainers.image.description="Express server that redirects users to Play Store or App Store based on device"
