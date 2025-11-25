@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -13,7 +13,9 @@ if (APP_STORE_APP_ID) {
 } else if (APP_STORE_URL) {
   finalAppStoreUrl = APP_STORE_URL;
 } else {
-  console.error('ERROR: Either APP_STORE_APP_ID or APP_STORE_URL environment variable is required');
+  console.error(
+    "ERROR: Either APP_STORE_APP_ID or APP_STORE_URL environment variable is required"
+  );
   process.exit(1);
 }
 
@@ -23,37 +25,55 @@ if (PLAY_STORE_PACKAGE_NAME) {
 } else if (PLAY_STORE_URL) {
   finalPlayStoreUrl = PLAY_STORE_URL;
 } else {
-  console.error('ERROR: Either PLAY_STORE_PACKAGE_NAME or PLAY_STORE_URL environment variable is required');
+  console.error(
+    "ERROR: Either PLAY_STORE_PACKAGE_NAME or PLAY_STORE_URL environment variable is required"
+  );
   process.exit(1);
 }
 
-function isIOSDevice(userAgent) {
-  const ua = userAgent.toLowerCase();
-  return /iphone|ipad|ipod/.test(ua);
-}
+const normalizeUserAgent = (userAgent) => (userAgent || "").toLowerCase();
 
-app.get('/', (req, res) => {
-  const userAgent = req.headers['user-agent'] || '';
+const isIOSDevice = (userAgent) => {
+  const ua = normalizeUserAgent(userAgent);
+  return /iphone|ipad|ipod/.test(ua);
+};
+
+const isMacOSDevice = (userAgent) => {
+  const ua = normalizeUserAgent(userAgent);
+  const isiOS = isIOSDevice(userAgent);
+  return !isiOS && (ua.includes("macintosh") || ua.includes("mac os x"));
+};
+
+app.get("/", (req, res) => {
+  const userAgent = req.headers["user-agent"] || "";
   const isIOS = isIOSDevice(userAgent);
-  
-  const redirectUrl = isIOS ? finalAppStoreUrl : finalPlayStoreUrl;
-  
-  console.log(`Device: ${isIOS ? 'iOS' : 'Other'}, User-Agent: ${userAgent.substring(0, 50)}...`);
+  const isMacOS = isMacOSDevice(userAgent);
+
+  const redirectToAppStore = isIOS || isMacOS;
+  const redirectUrl = redirectToAppStore ? finalAppStoreUrl : finalPlayStoreUrl;
+
+  console.log(
+    `Device: ${redirectToAppStore ? "App Store" : "Play Store"}, ` +
+      `macOS: ${isMacOS}, User-Agent: ${userAgent.substring(0, 50)}...`
+  );
   res.redirect(301, redirectUrl);
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get("/health", (_, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-app.get('/detect', (req, res) => {
-  const userAgent = req.headers['user-agent'] || '';
+app.get("/detect", (req, res) => {
+  const userAgent = req.headers["user-agent"] || "";
   const isIOS = isIOSDevice(userAgent);
-  
+  const isMacOS = isMacOSDevice(userAgent);
+  const redirectToAppStore = isIOS || isMacOS;
+
   res.json({
     isIOS,
+    isMacOS,
     userAgent,
-    redirectTo: isIOS ? 'App Store' : 'Play Store'
+    redirectTo: redirectToAppStore ? "App Store" : "Play Store",
   });
 });
 
